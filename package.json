@@ -1,0 +1,22 @@
+{
+  "name": "ledgerforge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Order-matching and double-entry ledger as a set of small services, with the infra, metrics and tracing to run them properly",
+  "type": "module",
+  "engines": { "node": ">=22.18" },
+  "workspaces": ["packages/*", "services/*"],
+  "scripts": {
+    "test": "node --test \"packages/*/test/*.test.ts\" \"services/*/test/*.test.ts\" --test-skip-pattern=\"@integration\"",
+    "test:integration": "node --test --test-concurrency=1 --test-name-pattern=\"@integration\" \"packages/*/test/*.test.ts\" \"services/*/test/*.test.ts\"",
+    "typecheck": "tsc --noEmit",
+    "e2e": "node scripts/e2e.ts"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@types/amqplib": "^0.10.7",
+    "@types/node": "^24.0.0",
+    "@types/pg": "^8.15.0",
+    "typescript": "^7.0.2"
+  }
+}
