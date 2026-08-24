@@ -4,8 +4,8 @@ import { fileURLToPath } from "node:url";
 import { migrate } from "@ledgerforge/shared";
 import { AccountsRepo, InsufficientFunds } from "../src/repo.ts";
 import type { BalanceCache } from "../src/repo.ts";
-import { startPg } from "./pg.ts";
-import type { TestPg } from "./pg.ts";
+import { startPg } from "../../../packages/shared/test/pg.ts";
+import type { TestPg } from "../../../packages/shared/test/pg.ts";
 
 const dir = fileURLToPath(new URL("../migrations", import.meta.url));
 

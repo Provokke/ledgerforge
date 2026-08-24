@@ -167,6 +167,12 @@ export class AccountsRepo {
     return out;
   }
 
+  /** Holdings (available + held) per `account|currency`, the same key shape the journal uses. */
+  async holdings(): Promise<Map<string, bigint>> {
+    const rows = (await this.pool.query("SELECT account_id, currency, available + held AS total FROM balances")).rows;
+    return new Map(rows.map((r) => [`${r.account_id}|${r.currency}`, r.total as bigint]));
+  }
+
   /** Sum per currency across every account. The ledger audit compares this to the journal. */
   async totals(): Promise<Record<string, bigint>> {
     const rows = (await this.pool.query("SELECT currency, sum(available + held)::bigint AS total FROM balances GROUP BY currency ORDER BY currency")).rows;
