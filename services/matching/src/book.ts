@@ -88,6 +88,11 @@ export class OrderBook {
     return this.orders.has(id);
   }
 
+  /** Open quantity left on a resting order, undefined if it isn't in the book. */
+  remaining(id: string): number | undefined {
+    return this.orders.get(id)?.qty;
+  }
+
   /** Aggregated depth, best price first. */
   depth(side: Side, limit = Infinity): BookLevel[] {
     const s = side === "buy" ? this.bids : this.asks;
