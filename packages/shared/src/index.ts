@@ -7,3 +7,4 @@ export * from "./redis.ts";
 export * from "./mq.ts";
 export * from "./http.ts";
 export * from "./events.ts";
+export * from "./service.ts";
