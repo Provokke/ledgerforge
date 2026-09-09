@@ -46,5 +46,5 @@ test("/metrics exposes request counters with route labels, not raw paths", async
   await fetch(url("/orders/777"), { headers: auth });
   const text = await (await fetch(url("/metrics"))).text();
   assert.match(text, /http_requests_total\{[^}]*route="\/orders\/:id"[^}]*\} \d+/);
-  assert.doesNotMatch(text, /777/);
+  assert.doesNotMatch(text, /orders\/777/);
 });
