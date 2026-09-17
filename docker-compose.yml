@@ -1,0 +1,142 @@
+# Whole stack: docker compose up --build
+# Gateway on :3000, Grafana :3005, Prometheus :9090, Jaeger :16686, RabbitMQ UI :15672.
+# Keys below are for local use only. Change them before you put this anywhere real.
+
+x-service: &service
+  build: .
+  image: ledgerforge:dev
+  restart: unless-stopped
+  environment: &env
+    LOG_LEVEL: info
+    REDIS_URL: redis://redis:6379
+    AMQP_URL: amqp://ledgerforge:ledgerforge@rabbitmq:5672
+    OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+    SYMBOLS: BTC-USD,ETH-USD
+  depends_on:
+    postgres: { condition: service_healthy }
+    redis: { condition: service_healthy }
+    rabbitmq: { condition: service_healthy }
+
+services:
+  gateway:
+    <<: *service
+    environment:
+      <<: *env
+      SERVICE: gateway
+      API_KEYS: ${API_KEYS:-key-alice:alice,key-bob:bob}
+      ADMIN_KEY: ${ADMIN_KEY:-admin-secret}
+      ACCOUNTS_URL: http://accounts:3001
+      LEDGER_URL: http://ledger:3002
+    ports: ["3000:3000"]
+    healthcheck: &hc
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  accounts:
+    <<: *service
+    environment:
+      <<: *env
+      SERVICE: accounts
+      DATABASE_URL: postgres://ledgerforge:ledgerforge@postgres:5432/accounts
+    healthcheck:
+      <<: *hc
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3001/readyz"]
+
+  ledger:
+    <<: *service
+    environment:
+      <<: *env
+      SERVICE: ledger
+      DATABASE_URL: postgres://ledgerforge:ledgerforge@postgres:5432/ledger
+      ACCOUNTS_URL: http://accounts:3001
+    healthcheck:
+      <<: *hc
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3002/readyz"]
+
+  # One replica only: the book lives in memory and each symbol has one queue.
+  matching:
+    <<: *service
+    environment:
+      <<: *env
+      SERVICE: matching
+    healthcheck:
+      <<: *hc
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3003/readyz"]
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ledgerforge
+      POSTGRES_PASSWORD: ledgerforge
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./deploy/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ledgerforge -d ledger"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ledgerforge
+      RABBITMQ_DEFAULT_PASS: ledgerforge
+    ports: ["15672:15672"]
+    volumes: [rabbitdata:/var/lib/rabbitmq]
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.116.1
+    restart: unless-stopped
+    command: ["--config=/etc/otel/config.yaml"]
+    volumes: ["./deploy/observability/otel-collector.yaml:/etc/otel/config.yaml:ro"]
+    depends_on: [jaeger]
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.64.0
+    restart: unless-stopped
+    environment: { COLLECTOR_OTLP_ENABLED: "true" }
+    ports: ["16686:16686"]
+
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    restart: unless-stopped
+    volumes:
+      - ./deploy/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deploy/observability/alerts.yml:/etc/prometheus/alerts.yml:ro
+    ports: ["9090:9090"]
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./deploy/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports: ["3005:3000"]
+    depends_on: [prometheus]
+
+volumes:
+  pgdata:
+  rabbitdata:
