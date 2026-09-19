@@ -1,0 +1,7 @@
+# Values that line up with dev-infra.yaml. Load the image into your cluster first,
+# e.g. kind load docker-image ledgerforge:dev
+secrets:
+  apiKeys: "key-alice:alice,key-bob:bob"
+  adminKey: "admin-secret"
+gateway: { replicas: 1 }
+accounts: { replicas: 1 }

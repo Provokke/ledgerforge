@@ -1,0 +1,7 @@
+accounts_database_url = "postgres://ledgerforge:change-me@postgres.example.internal:5432/accounts"
+ledger_database_url   = "postgres://ledgerforge:change-me@postgres.example.internal:5432/ledger"
+redis_url             = "redis://redis.example.internal:6379"
+amqp_url              = "amqp://ledgerforge:change-me@rabbitmq.example.internal:5672"
+image_repository      = "registry.example.com/ledgerforge"
+image_tag             = "0.1.0"
+ingress_host          = "ledgerforge.example.com"

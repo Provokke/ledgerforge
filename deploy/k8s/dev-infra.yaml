@@ -1,0 +1,105 @@
+# Postgres, Redis and RabbitMQ for a throwaway cluster (kind, minikube, k3d).
+# Single replicas, simple passwords, no backups. Use managed services for anything real.
+#   kubectl apply -f deploy/k8s/dev-infra.yaml
+#   helm install lf deploy/helm/ledgerforge -f deploy/k8s/values-dev.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+data:
+  init.sql: |
+    CREATE DATABASE accounts;
+    CREATE DATABASE ledger;
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector: { matchLabels: { app: postgres } }
+  template:
+    metadata: { labels: { app: postgres } }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:17-alpine
+          env:
+            - { name: POSTGRES_USER, value: ledgerforge }
+            - { name: POSTGRES_PASSWORD, value: change-me }
+            - { name: PGDATA, value: /var/lib/postgresql/data/pgdata }
+          ports: [{ containerPort: 5432 }]
+          readinessProbe: { exec: { command: [pg_isready, -U, ledgerforge, -d, ledger] }, periodSeconds: 5 }
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/postgresql/data }
+            - { name: init, mountPath: /docker-entrypoint-initdb.d }
+          resources: { requests: { cpu: 100m, memory: 256Mi } }
+      volumes:
+        - name: init
+          configMap: { name: postgres-init }
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec: { accessModes: [ReadWriteOnce], resources: { requests: { storage: 2Gi } } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: postgres }
+spec:
+  selector: { app: postgres }
+  ports: [{ port: 5432 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: redis }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: redis } }
+  template:
+    metadata: { labels: { app: redis } }
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          ports: [{ containerPort: 6379 }]
+          readinessProbe: { exec: { command: [redis-cli, ping] }, periodSeconds: 5 }
+          resources: { requests: { cpu: 50m, memory: 64Mi } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: redis }
+spec:
+  selector: { app: redis }
+  ports: [{ port: 6379 }]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: rabbitmq
+spec:
+  serviceName: rabbitmq
+  replicas: 1
+  selector: { matchLabels: { app: rabbitmq } }
+  template:
+    metadata: { labels: { app: rabbitmq } }
+    spec:
+      containers:
+        - name: rabbitmq
+          image: rabbitmq:4-management-alpine
+          env:
+            - { name: RABBITMQ_DEFAULT_USER, value: ledgerforge }
+            - { name: RABBITMQ_DEFAULT_PASS, value: change-me }
+          ports: [{ name: amqp, containerPort: 5672 }, { name: mgmt, containerPort: 15672 }]
+          readinessProbe: { exec: { command: [rabbitmq-diagnostics, -q, ping] }, periodSeconds: 10, timeoutSeconds: 5 }
+          volumeMounts: [{ name: data, mountPath: /var/lib/rabbitmq }]
+          resources: { requests: { cpu: 100m, memory: 256Mi } }
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec: { accessModes: [ReadWriteOnce], resources: { requests: { storage: 1Gi } } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: rabbitmq }
+spec:
+  selector: { app: rabbitmq }
+  ports: [{ name: amqp, port: 5672 }, { name: mgmt, port: 15672 }]

@@ -1,0 +1,4 @@
+Gateway service: {{ .Release.Name }}-gateway:3000
+{{- if and (not .Values.secrets.apiKeys) (not .Values.existingSecret) }}
+WARNING: secrets.apiKeys is empty and the gateway refuses to start without keys.
+{{- end }}

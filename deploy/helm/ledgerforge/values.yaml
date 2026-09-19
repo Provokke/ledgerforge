@@ -1,0 +1,44 @@
+image:
+  repository: ledgerforge
+  tag: dev
+  pullPolicy: IfNotPresent
+
+# Postgres, Redis and RabbitMQ are not part of this chart. Point at your own.
+# Either give the URLs here, or set existingSecret to a Secret that already has
+# the keys: accountsDatabaseUrl, ledgerDatabaseUrl, redisUrl, amqpUrl, apiKeys, adminKey.
+existingSecret: ""
+secrets:
+  accountsDatabaseUrl: postgres://ledgerforge:change-me@postgres:5432/accounts
+  ledgerDatabaseUrl: postgres://ledgerforge:change-me@postgres:5432/ledger
+  redisUrl: redis://redis:6379
+  amqpUrl: amqp://ledgerforge:change-me@rabbitmq:5672
+  apiKeys: "" # key:account,key:account
+  adminKey: ""
+
+symbols: "BTC-USD,ETH-USD"
+logLevel: info
+otlpEndpoint: "" # e.g. http://otel-collector:4318, empty turns tracing off
+
+gateway:
+  replicas: 2
+  rateLimit: 120
+  resources: { requests: { cpu: 100m, memory: 128Mi }, limits: { memory: 256Mi } }
+  ingress:
+    enabled: false
+    className: ""
+    host: ledgerforge.example.com
+    annotations: {}
+accounts:
+  replicas: 2
+  resources: { requests: { cpu: 100m, memory: 128Mi }, limits: { memory: 256Mi } }
+ledger:
+  replicas: 1
+  resources: { requests: { cpu: 100m, memory: 128Mi }, limits: { memory: 256Mi } }
+matching:
+  # Never raise this. The book lives in memory and each symbol has one queue.
+  replicas: 1
+  resources: { requests: { cpu: 200m, memory: 192Mi }, limits: { memory: 384Mi } }
+
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/path: /metrics
