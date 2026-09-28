@@ -145,9 +145,22 @@ npm run typecheck
 npm test                  # 45 unit tests, no Docker needed
 npm run test:integration  # 23 tests against real Postgres, RabbitMQ and Redis in containers
 npm run e2e               # against a running compose stack
+npm run bench             # order book micro-benchmark, no Docker
 ```
 
 The full-flow test starts the four services as real processes next to real infrastructure and drives them through the gateway: auth, deposits and replays, a crossing trade, a rejected order, idempotency keys and a clean audit.
+
+## ⏱️ Benchmark
+
+`npm run bench` times the order book on its own: one thread, no network, no database, 1,000,000 orders per scenario. One run on a Windows 11 desktop with Node 24:
+
+| Scenario | Orders/s | p50 | p99 |
+|---|---|---|---|
+| Everything rests, nothing crosses | ~1.4M | 0.5 µs | 1.3 µs |
+| Crossing mix (about 0.7 trades per order) | ~2.0M | 0.3 µs | 1.0 µs |
+| Resting orders with a cancel every third order | ~1.6M | 0.4 µs | 1.1 µs |
+
+Treat these as rough. They vary from run to run and machine to machine, the per-order timings include the cost of reading the clock, and they say nothing about the whole system. End to end, throughput is set by Postgres commits and RabbitMQ round trips, and that has not been measured.
 
 ## ⚠️ Honest limits
 
@@ -158,5 +171,5 @@ This is a portfolio project, not an exchange. Things it does not do:
 - **A cancel can beat its own hold.** The cancel goes straight to matching. If it arrives before the order has been held and forwarded, it does nothing and the order goes on to rest, so the caller has to retry the cancel.
 - **Limit orders only**, and the list of symbols is fixed at start-up.
 - **Static API keys.** There are no users, sessions or key rotation.
-- **No load numbers.** Nothing here has been benchmarked, so there are no throughput claims.
+- **No end-to-end load numbers.** Only the order book has been benchmarked, not the full system.
 - **The ledger audit isn't exported as a metric.** It is an admin endpoint, and the alert rules watch dead-lettered messages instead.

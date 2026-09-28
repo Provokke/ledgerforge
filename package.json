@@ -10,7 +10,8 @@
     "test": "node --test \"packages/*/test/*.test.ts\" \"services/*/test/*.test.ts\"",
     "test:integration": "node --test --test-concurrency=1 \"packages/*/test/*.itest.ts\" \"services/*/test/*.itest.ts\" \"test/*.itest.ts\"",
     "typecheck": "tsc --noEmit",
-    "e2e": "node scripts/e2e.ts"
+    "e2e": "node scripts/e2e.ts",
+    "bench": "node scripts/bench.ts"
   },
   "license": "MIT",
   "devDependencies": {
