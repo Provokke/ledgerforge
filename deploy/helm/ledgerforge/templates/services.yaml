@@ -2,7 +2,7 @@
   "gateway" (dict "port" 3000 "db" "")
   "accounts" (dict "port" 3001 "db" "accountsDatabaseUrl")
   "ledger" (dict "port" 3002 "db" "ledgerDatabaseUrl")
-  "matching" (dict "port" 3003 "db" "") -}}
+  "matching" (dict "port" 3003 "db" "matchingDatabaseUrl") -}}
 {{- range $name, $s := $svcs }}
 {{- $v := get $.Values $name }}
 ---

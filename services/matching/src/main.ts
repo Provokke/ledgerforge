@@ -1,6 +1,8 @@
-import { App, Bus, Counter, Gauge, Histogram, LATENCY_BUCKETS, Lifecycle, baseConfig, createLogger, createMetrics, initTracing, str } from "@ledgerforge/shared";
+import { fileURLToPath } from "node:url";
+import { App, Bus, Counter, Gauge, Histogram, LATENCY_BUCKETS, Lifecycle, baseConfig, createLogger, createMetrics, createPool, initTracing, migrate, str, waitForDb } from "@ledgerforge/shared";
 import { MatchingEngine } from "./engine.ts";
-import { startMatching } from "./service.ts";
+import { restore, startMatching } from "./service.ts";
+import { MatchLog } from "./store.ts";
 
 const cfg = baseConfig("matching", 3003);
 const symbols = str("SYMBOLS", "BTC-USD,ETH-USD").split(",").map((s) => s.trim()).filter(Boolean);
@@ -20,12 +22,23 @@ const engine = new MatchingEngine(symbols, {
 });
 
 const life = new Lifecycle(log);
+const pool = createPool(cfg.databaseUrl);
+life.add("pool", () => pool.end());
+await waitForDb(pool);
+await migrate(pool, fileURLToPath(new URL("../migrations", import.meta.url)), "matching", log);
+const store = new MatchLog(pool);
+// Rebuild the books before taking any new message, so nothing is matched against a half-empty book.
+await restore(engine, store, log);
+
 const bus = await Bus.connect(cfg.amqpUrl, log, { metrics, onFatal: () => void life.shutdown().then(() => process.exit(1)) });
 life.add("bus", () => bus.close());
-await startMatching(bus, engine, log);
+await startMatching(bus, engine, store, log, () => void life.shutdown().then(() => process.exit(1)));
 
 const app = new App(log, metrics);
-app.standardRoutes(() => bus.ready);
+app.standardRoutes(async () => {
+  await pool.query("SELECT 1");
+  return bus.ready;
+});
 app.get("/book/:symbol", (c) => {
   const symbol = c.params.symbol!;
   if (!engine.symbols().includes(symbol)) return { error: "unknown_symbol" };

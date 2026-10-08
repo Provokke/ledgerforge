@@ -55,12 +55,14 @@ services:
       <<: *hc
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3002/readyz"]
 
-  # One replica only: the book lives in memory and each symbol has one queue.
+  # One replica only: each symbol has one queue and one book. The book is rebuilt from
+  # the matching journal in Postgres when the container starts.
   matching:
     <<: *service
     environment:
       <<: *env
       SERVICE: matching
+      DATABASE_URL: postgres://ledgerforge:ledgerforge@postgres:5432/matching
     healthcheck:
       <<: *hc
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3003/readyz"]

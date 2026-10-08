@@ -5,11 +5,12 @@ image:
 
 # Postgres, Redis and RabbitMQ are not part of this chart. Point at your own.
 # Either give the URLs here, or set existingSecret to a Secret that already has
-# the keys: accountsDatabaseUrl, ledgerDatabaseUrl, redisUrl, amqpUrl, apiKeys, adminKey.
+# the keys: accountsDatabaseUrl, ledgerDatabaseUrl, matchingDatabaseUrl, redisUrl, amqpUrl, apiKeys, adminKey.
 existingSecret: ""
 secrets:
   accountsDatabaseUrl: postgres://ledgerforge:change-me@postgres:5432/accounts
   ledgerDatabaseUrl: postgres://ledgerforge:change-me@postgres:5432/ledger
+  matchingDatabaseUrl: postgres://ledgerforge:change-me@postgres:5432/matching
   redisUrl: redis://redis:6379
   amqpUrl: amqp://ledgerforge:change-me@rabbitmq:5672
   apiKeys: "" # key:account,key:account
@@ -35,7 +36,7 @@ ledger:
   replicas: 1
   resources: { requests: { cpu: 100m, memory: 128Mi }, limits: { memory: 256Mi } }
 matching:
-  # Never raise this. The book lives in memory and each symbol has one queue.
+  # Never raise this. Each symbol has one queue and one in-memory book (rebuilt from the journal on start).
   replicas: 1
   resources: { requests: { cpu: 200m, memory: 192Mi }, limits: { memory: 384Mi } }
 

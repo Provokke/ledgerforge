@@ -7,7 +7,7 @@ An order-matching engine with a double-entry ledger, built as four small service
 ![License](https://img.shields.io/badge/LICENSE-MIT-blue?style=for-the-badge)
 ![Node](https://img.shields.io/badge/NODE-%E2%89%A5%2022.18-5fa04e?style=for-the-badge&logo=node.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TYPESCRIPT-STRICT-3178c6?style=for-the-badge&logo=typescript&logoColor=white)
-![Tests](https://img.shields.io/badge/TESTS-45%20UNIT%20%2B%2023%20INTEGRATION-brightgreen?style=for-the-badge)
+![Tests](https://img.shields.io/badge/TESTS-50%20UNIT%20%2B%2024%20INTEGRATION-brightgreen?style=for-the-badge)
 ![Money](https://img.shields.io/badge/MONEY-INTEGERS%20ONLY-orange?style=for-the-badge)
 
 Refer to [CONTRIBUTING.md](CONTRIBUTING.md) for how to pitch in.
@@ -42,7 +42,7 @@ flowchart LR
 |---|---|---|
 | gateway | The public HTTP API | API-key auth, per-key rate limit, `Idempotency-Key` on orders, input validation |
 | accounts | Balances and holds | Reserves funds before an order reaches the book, settles trades, Redis balance cache |
-| matching | The order books | One queue per symbol, price-time priority, GTC / IOC / FOK |
+| matching | The order books | One queue per symbol, price-time priority, GTC / IOC / FOK. Journals every message to Postgres and rebuilds the books from it on start. |
 | ledger | The journal | Append-only, hash-chained, balanced per currency, enforced by Postgres triggers |
 
 A few decisions worth knowing about:
@@ -51,6 +51,7 @@ A few decisions worth knowing about:
 - **Trades settle before holds are released.** Trades and final order updates share one queue with prefetch 1, so ordering is guaranteed by the broker rather than by luck.
 - **Every consumer is safe to run twice.** Events carry ids that the database rejects on repeat. Failures retry on a delay queue and end up in a dead-letter queue after the retry limit.
 - **The ledger can't be edited.** Triggers block `UPDATE`, `DELETE` and `TRUNCATE` on the journal, and a deferred trigger rejects any entry whose debits and credits don't match per currency. Each entry carries the hash of the one before it.
+- **The book survives a crash.** Matching commits each input and its result to a journal before publishing anything. On start it replays the journal into empty books and checks every replayed result against what was stored; if one differs it refuses to start rather than trade on a wrong book. A message redelivered after a crash gets its stored result published again, and the consumers downstream drop repeated event ids. If the journal write itself fails, matching exits and rebuilds from the journal instead of carrying on with a book that is ahead of it.
 - **Integers all the way.** The book uses safe integers, the database and ledger use `bigint`. There are no floats anywhere near money.
 
 ## 🚀 Quick start
@@ -131,7 +132,7 @@ The chart runs matching as a single pod with a `Recreate` strategy on purpose. S
 packages/shared/     config, logger, metrics, tracing, db + migrations, Redis, RabbitMQ bus, HTTP app, lifecycle
 services/gateway/    public API
 services/accounts/   balances, holds, settlement
-services/matching/   order book and engine
+services/matching/   order book, engine and journal
 services/ledger/     journal and audit
 test/                full-flow integration test
 scripts/e2e.ts       end-to-end check against the compose stack
@@ -142,8 +143,8 @@ deploy/              helm, k8s, terraform, observability, postgres init
 
 ```sh
 npm run typecheck
-npm test                  # 45 unit tests, no Docker needed
-npm run test:integration  # 23 tests against real Postgres, RabbitMQ and Redis in containers
+npm test                  # 50 unit tests, no Docker needed
+npm run test:integration  # 24 tests against real Postgres, RabbitMQ and Redis in containers
 npm run e2e               # against a running compose stack
 npm run bench             # order book micro-benchmark, no Docker
 ```
@@ -166,8 +167,8 @@ Treat these as rough. They vary from run to run and machine to machine, the per-
 
 This is a portfolio project, not an exchange. Things it does not do:
 
-- **The order book lives in memory.** If matching restarts, resting orders vanish from the book while their funds stay held. There is no replay from a log yet.
-- **One matching process per symbol.** Each symbol has one queue and one in-memory book. Scaling out means splitting symbols across processes, not adding replicas.
+- **Recovery replays the whole journal.** The book is rebuilt from every message matching has ever seen, with no snapshots or compaction, so start-up time and journal size grow with history.
+- **One matching process per symbol.** Each symbol has one queue and one in-memory book, and there is no failover. While matching is down, orders queue up in RabbitMQ. Scaling out means splitting symbols across processes, not adding replicas.
 - **A cancel can beat its own hold.** The cancel goes straight to matching. If it arrives before the order has been held and forwarded, it does nothing and the order goes on to rest, so the caller has to retry the cancel.
 - **Limit orders only**, and the list of symbols is fixed at start-up.
 - **Static API keys.** There are no users, sessions or key rotation.

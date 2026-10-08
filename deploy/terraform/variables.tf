@@ -67,6 +67,11 @@ variable "ledger_database_url" {
   sensitive = true
 }
 
+variable "matching_database_url" {
+  type      = string
+  sensitive = true
+}
+
 variable "redis_url" {
   type      = string
   sensitive = true

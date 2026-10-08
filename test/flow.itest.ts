@@ -81,10 +81,15 @@ describe("full flow @integration", () => {
     });
   const waitStatus = (key: string, id: string, want: string) => until(`order ${id} to be ${want}`, async () => (await status(key, id)) === want);
 
+  let matchingProc: ReturnType<typeof spawn>;
+  let restartMatching: () => Promise<void>;
+  let matchingUrl = "";
+
   before(async () => {
     pg = await startPg();
     await pg.pool.query("CREATE DATABASE accounts");
     await pg.pool.query("CREATE DATABASE ledger");
+    await pg.pool.query("CREATE DATABASE matching");
     const dbUrl = (db: string) => pg.url.replace(/\/postgres$/, `/${db}`);
     const redisPort = container("redis:7-alpine", 6379);
     const mqPort = container("rabbitmq:4-alpine", 5672, ["-e", "RABBITMQ_DEFAULT_USER=lf", "-e", "RABBITMQ_DEFAULT_PASS=lf"]);
@@ -103,10 +108,19 @@ describe("full flow @integration", () => {
     const start = (name: keyof typeof ports, env: Record<string, string>) => {
       const p = spawn(process.execPath, [`services/${name}/src/main.ts`], { env: { ...common, PORT: String(ports[name]), ...env }, stdio: ["ignore", "inherit", "inherit"] });
       procs.push(p);
+      return p;
     };
     start("accounts", { DATABASE_URL: dbUrl("accounts") });
     start("ledger", { DATABASE_URL: dbUrl("ledger"), ACCOUNTS_URL: accountsUrl });
-    start("matching", {});
+    matchingProc = start("matching", { DATABASE_URL: dbUrl("matching") });
+    restartMatching = async () => {
+      const old = matchingProc;
+      old.kill("SIGKILL"); // no graceful shutdown: this is the crash case
+      await new Promise((r) => (old.exitCode !== null || old.signalCode ? r(0) : old.once("exit", r)));
+      matchingProc = start("matching", { DATABASE_URL: dbUrl("matching") });
+      await until("matching ready again", async () => (await fetch(`http://127.0.0.1:${ports.matching}/readyz`)).ok, 90_000);
+    };
+    matchingUrl = `http://127.0.0.1:${ports.matching}`;
     start("gateway", { API_KEYS: `${ALICE}:alice,${BOB}:bob,${CAROL}:carol`, ADMIN_KEY: ADMIN, ACCOUNTS_URL: accountsUrl, LEDGER_URL: `http://127.0.0.1:${ports.ledger}` });
     for (const [name, port] of Object.entries(ports)) {
       await until(`${name} ready`, async () => (await fetch(`http://127.0.0.1:${port}/readyz`)).ok, 90_000);
@@ -115,7 +129,7 @@ describe("full flow @integration", () => {
 
   after(async () => {
     for (const p of procs) p.kill("SIGTERM");
-    await Promise.all(procs.map((p) => new Promise((r) => (p.exitCode !== null ? r(0) : p.once("exit", r)))));
+    await Promise.all(procs.map((p) => new Promise((r) => (p.exitCode !== null || p.signalCode ? r(0) : p.once("exit", r)))));
     for (const c of containers) {
       try {
         execFileSync("docker", ["rm", "-f", c], { stdio: "ignore" });
@@ -209,5 +223,24 @@ describe("full flow @integration", () => {
     const m = await (await fetch(`${accountsUrl}/metrics`)).text();
     assert.match(m, /mq_messages_total/);
     assert.equal((await fetch(`${gw}/healthz`)).status, 200);
+  });
+
+  it("a matching crash loses nothing: the book is rebuilt from the journal", async () => {
+    const sell = await order(BOB, { symbol: "BTC-USD", side: "sell", price: "70000", qty: "10" });
+    await waitStatus(BOB, sell.body.orderId, "open");
+    const usdBefore = (await bal("alice", "USD"))!.available;
+    const book = async () => ((await (await fetch(`${matchingUrl}/book/BTC-USD`)).json()) as { asks: { price: number; qty: number }[] }).asks;
+    assert.deepEqual(await book(), [{ price: 70000, qty: 10, orders: 1 }]);
+
+    await restartMatching();
+    assert.deepEqual(await book(), [{ price: 70000, qty: 10, orders: 1 }], "resting order is back after the crash");
+
+    // and it still trades: alice buys the restored order
+    const buy = await order(ALICE, { symbol: "BTC-USD", side: "buy", price: "70000", qty: "10" });
+    await waitStatus(ALICE, buy.body.orderId, "filled");
+    await waitStatus(BOB, sell.body.orderId, "filled");
+    await waitBal("alice", "USD", usdBefore - 700_000n);
+    assert.deepEqual(await book(), []);
+    await until("ledger to agree again", async () => (await call("GET", "/audit", ADMIN)).body.ok === true);
   });
 });

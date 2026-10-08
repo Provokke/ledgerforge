@@ -39,6 +39,23 @@ export class MatchingEngine {
     this.hooks = hooks;
   }
 
+  private quiet = false;
+
+  /** Hooks feed metrics, so they stay off while the log is replayed at boot. */
+  private live(): EngineHooks {
+    return this.quiet ? {} : this.hooks;
+  }
+
+  /** Runs fn with the hooks off. */
+  silently<T>(fn: () => T): T {
+    this.quiet = true;
+    try {
+      return fn();
+    } finally {
+      this.quiet = false;
+    }
+  }
+
   symbols(): string[] {
     return [...this.books.keys()];
   }
@@ -78,7 +95,7 @@ export class MatchingEngine {
     const res = book.submit({ id: m.orderId, accountId: m.accountId, side: m.side, price, qty, tif: m.tif });
     if (res.status === "rejected") {
       out.updates.push(update(m, "rejected", 0, qty, true, res.reason));
-      this.hooks.onOrder?.(m.symbol, "rejected");
+      this.live().onOrder?.(m.symbol, "rejected");
       return out;
     }
     this.known.set(m.orderId, { accountId: m.accountId, symbol: m.symbol, qty });
@@ -102,10 +119,10 @@ export class MatchingEngine {
     }
     this.pushUpdates(out, m, book, res);
 
-    this.hooks.onOrder?.(m.symbol, res.status);
-    this.hooks.onLatency?.(m.symbol, Number(process.hrtime.bigint() - started) / 1e9);
-    this.hooks.onDepth?.(m.symbol, "buy", book.depth("buy").length);
-    this.hooks.onDepth?.(m.symbol, "sell", book.depth("sell").length);
+    this.live().onOrder?.(m.symbol, res.status);
+    this.live().onLatency?.(m.symbol, Number(process.hrtime.bigint() - started) / 1e9);
+    this.live().onDepth?.(m.symbol, "buy", book.depth("buy").length);
+    this.live().onDepth?.(m.symbol, "sell", book.depth("sell").length);
     return out;
   }
 
@@ -117,9 +134,9 @@ export class MatchingEngine {
     const remaining = book.remaining(m.orderId);
     if (remaining === undefined || !book.cancel(m.orderId)) return out; // already filled or gone
     out.updates.push({ orderId: m.orderId, accountId: k.accountId, symbol: m.symbol, status: "cancelled", filled: String(k.qty - remaining), remaining: String(remaining), final: true });
-    this.hooks.onOrder?.(m.symbol, "cancelled");
-    this.hooks.onDepth?.(m.symbol, "buy", book.depth("buy").length);
-    this.hooks.onDepth?.(m.symbol, "sell", book.depth("sell").length);
+    this.live().onOrder?.(m.symbol, "cancelled");
+    this.live().onDepth?.(m.symbol, "buy", book.depth("buy").length);
+    this.live().onDepth?.(m.symbol, "sell", book.depth("sell").length);
     return out;
   }
 

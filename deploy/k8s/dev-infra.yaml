@@ -10,6 +10,7 @@ data:
   init.sql: |
     CREATE DATABASE accounts;
     CREATE DATABASE ledger;
+    CREATE DATABASE matching;
 ---
 apiVersion: apps/v1
 kind: StatefulSet

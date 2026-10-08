@@ -1,5 +1,6 @@
 accounts_database_url = "postgres://ledgerforge:change-me@postgres.example.internal:5432/accounts"
 ledger_database_url   = "postgres://ledgerforge:change-me@postgres.example.internal:5432/ledger"
+matching_database_url = "postgres://ledgerforge:change-me@postgres.example.internal:5432/matching"
 redis_url             = "redis://redis.example.internal:6379"
 amqp_url              = "amqp://ledgerforge:change-me@rabbitmq.example.internal:5672"
 image_repository      = "registry.example.com/ledgerforge"

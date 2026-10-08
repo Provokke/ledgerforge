@@ -52,6 +52,7 @@ resource "kubernetes_secret_v1" "config" {
   data = {
     accountsDatabaseUrl = var.accounts_database_url
     ledgerDatabaseUrl   = var.ledger_database_url
+    matchingDatabaseUrl = var.matching_database_url
     redisUrl            = var.redis_url
     amqpUrl             = var.amqp_url
     apiKeys             = join(",", [for a in var.accounts : "${random_password.api_key[a].result}:${a}"])
