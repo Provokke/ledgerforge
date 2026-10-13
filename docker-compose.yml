@@ -25,6 +25,7 @@ services:
       SERVICE: gateway
       API_KEYS: ${API_KEYS:-key-alice:alice,key-bob:bob}
       ADMIN_KEY: ${ADMIN_KEY:-admin-secret}
+      RATE_LIMIT: ${RATE_LIMIT:-120}
       ACCOUNTS_URL: http://accounts:3001
       LEDGER_URL: http://ledger:3002
     ports: ["3000:3000"]

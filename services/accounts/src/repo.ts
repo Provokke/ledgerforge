@@ -145,13 +145,36 @@ export class AccountsRepo {
       if (bh.amount - bh.consumed < quoteAmt) throw new HoldError("buy hold too small");
       if (sh.amount - sh.consumed < s.qty) throw new HoldError("sell hold too small");
 
-      await c.query("UPDATE holds SET consumed = consumed + $2 WHERE id = $1", [s.buyHoldId, quoteAmt]);
-      await c.query("UPDATE holds SET consumed = consumed + $2 WHERE id = $1", [s.sellHoldId, s.qty]);
-      const bump = "version = version + 1, updated_at = now()";
-      await c.query(`UPDATE balances SET held = held - $3, ${bump} WHERE account_id = $1 AND currency = $2`, [s.buyer, s.quote, quoteAmt]);
-      await c.query(`UPDATE balances SET available = available + $3, ${bump} WHERE account_id = $1 AND currency = $2`, [s.buyer, s.base, s.qty]);
-      await c.query(`UPDATE balances SET held = held - $3, ${bump} WHERE account_id = $1 AND currency = $2`, [s.seller, s.base, s.qty]);
-      await c.query(`UPDATE balances SET available = available + $3, ${bump} WHERE account_id = $1 AND currency = $2`, [s.seller, s.quote, quoteAmt]);
+      await c.query("UPDATE holds SET consumed = consumed + v.n FROM (VALUES ($1::text, $2::bigint), ($3::text, $4::bigint)) AS v(id, n) WHERE holds.id = v.id", [
+        s.buyHoldId,
+        quoteAmt,
+        s.sellHoldId,
+        s.qty,
+      ]);
+
+      // One UPDATE for all four balance legs. A trade between an account and itself would
+      // hit the same row twice, and UPDATE ... FROM only applies one match per row, so
+      // the deltas are added up per row first.
+      const delta = new Map<string, { account: string; currency: string; available: bigint; held: bigint }>();
+      const leg = (account: string, currency: string, available: bigint, held: bigint) => {
+        const k = `${account}|${currency}`;
+        const d = delta.get(k) ?? { account, currency, available: 0n, held: 0n };
+        d.available += available;
+        d.held += held;
+        delta.set(k, d);
+      };
+      leg(s.buyer, s.quote, 0n, -quoteAmt);
+      leg(s.buyer, s.base, s.qty, 0n);
+      leg(s.seller, s.base, 0n, -s.qty);
+      leg(s.seller, s.quote, quoteAmt, 0n);
+      const rows = [...delta.values()];
+      const args = rows.flatMap((d) => [d.account, d.currency, d.available, d.held]);
+      const values = rows.map((_, i) => `($${i * 4 + 1}::text, $${i * 4 + 2}::text, $${i * 4 + 3}::bigint, $${i * 4 + 4}::bigint)`).join(", ");
+      await c.query(
+        `UPDATE balances b SET available = b.available + v.da, held = b.held + v.dh, version = b.version + 1, updated_at = now()
+         FROM (VALUES ${values}) AS v(account_id, currency, da, dh) WHERE b.account_id = v.account_id AND b.currency = v.currency`,
+        args,
+      );
       touched.add(s.buyer).add(s.seller);
       return true;
     });
