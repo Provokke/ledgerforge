@@ -70,6 +70,19 @@ describe("accounts repo @integration", () => {
     assert.equal(await repo.releaseHold("bh"), 100n);
   });
 
+  it("settleTrade handles a self-trade (same account both sides)", async () => {
+    await repo.createAccount("me", "me");
+    await repo.deposit(uid("dep"), "me", "USD", 1000n);
+    await repo.deposit(uid("dep"), "me", "BTC", 10n);
+    await repo.placeHold("bh-me", "me", "USD", 500n);
+    await repo.placeHold("sh-me", "me", "BTC", 5n);
+    const t = { tradeId: "t-self", buyer: "me", seller: "me", base: "BTC", quote: "USD", qty: 4n, price: 100n, buyHoldId: "bh-me", sellHoldId: "sh-me" };
+    assert.equal(await repo.settleTrade(t), true);
+    const b = await repo.balances("me");
+    assert.deepEqual(b.USD, { available: 900n, held: 100n });
+    assert.deepEqual(b.BTC, { available: 9n, held: 1n });
+  });
+
   it("settleTrade rejects a hold that is too small and changes nothing", async () => {
     await fund("b2", "USD", 100n);
     await fund("s2", "BTC", 5n);

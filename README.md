@@ -7,7 +7,7 @@ An order-matching engine with a double-entry ledger, built as four small service
 ![License](https://img.shields.io/badge/LICENSE-MIT-blue?style=for-the-badge)
 ![Node](https://img.shields.io/badge/NODE-%E2%89%A5%2022.18-5fa04e?style=for-the-badge&logo=node.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TYPESCRIPT-STRICT-3178c6?style=for-the-badge&logo=typescript&logoColor=white)
-![Tests](https://img.shields.io/badge/TESTS-50%20UNIT%20%2B%2024%20INTEGRATION-brightgreen?style=for-the-badge)
+![Tests](https://img.shields.io/badge/TESTS-50%20UNIT%20%2B%2025%20INTEGRATION-brightgreen?style=for-the-badge)
 ![Money](https://img.shields.io/badge/MONEY-INTEGERS%20ONLY-orange?style=for-the-badge)
 
 Refer to [CONTRIBUTING.md](CONTRIBUTING.md) for how to pitch in.
@@ -144,7 +144,7 @@ deploy/              helm, k8s, terraform, observability, postgres init
 ```sh
 npm run typecheck
 npm test                  # 50 unit tests, no Docker needed
-npm run test:integration  # 24 tests against real Postgres, RabbitMQ and Redis in containers
+npm run test:integration  # 25 tests against real Postgres, RabbitMQ and Redis in containers
 npm run e2e               # against a running compose stack
 npm run bench             # order book micro-benchmark, no Docker
 ```
