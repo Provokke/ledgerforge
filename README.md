@@ -161,7 +161,19 @@ The full-flow test starts the four services as real processes next to real infra
 | Crossing mix (about 0.7 trades per order) | ~2.0M | 0.3 µs | 1.0 µs |
 | Resting orders with a cancel every third order | ~1.6M | 0.4 µs | 1.1 µs |
 
-Treat these as rough. They vary from run to run and machine to machine, the per-order timings include the cost of reading the clock, and they say nothing about the whole system. End to end, throughput is set by Postgres commits and RabbitMQ round trips, and that has not been measured.
+Treat these as rough. They vary from run to run and machine to machine, the per-order timings include the cost of reading the clock, and they say nothing about the whole system. End to end, throughput is set by Postgres commits and RabbitMQ round trips, and the next section measures that.
+
+## 📈 Load test
+
+`npm run load` pushes crossing orders through the real stack (gateway, accounts, matching, ledger, with Postgres, RabbitMQ and Redis in compose) and then checks the ledger audit. Start the stack with `RATE_LIMIT=1000000 docker compose up -d --build --wait`, then `node scripts/load.ts 2000 32`. One run, 2,000 orders and 1,000 trades with 32 in flight, on a Windows 11 desktop with Docker Desktop and everything on the one host:
+
+| Stage | Result |
+|---|---|
+| Gateway accepts orders | ~2,900 orders/s (p50 9 ms, p99 54 ms) |
+| Accounts settles them | ~190 orders/s (10.6 s for the run) |
+| Ledger caught up | 10.7 s, 1,002 entries, zero drift |
+
+The gateway only accepts and queues, so settlement is the real ceiling. Each queue runs at prefetch 1 so a trade is always settled before the hold it draws on is released, which means round trips to Postgres add up one after another. Numbers move from run to run and machine to machine.
 
 ## ⚠️ Honest limits
 
@@ -172,5 +184,5 @@ This is a portfolio project, not an exchange. Things it does not do:
 - **A cancel can beat its own hold.** The cancel goes straight to matching. If it arrives before the order has been held and forwarded, it does nothing and the order goes on to rest, so the caller has to retry the cancel.
 - **Limit orders only**, and the list of symbols is fixed at start-up.
 - **Static API keys.** There are no users, sessions or key rotation.
-- **No end-to-end load numbers.** Only the order book has been benchmarked, not the full system.
+- **Settlement is slow next to matching.** About 190 orders/s end to end on one host, held back by prefetch 1 on the fills queue. Batching would help but needs care to keep the ordering rules.
 - **The ledger audit isn't exported as a metric.** It is an admin endpoint, and the alert rules watch dead-lettered messages instead.
