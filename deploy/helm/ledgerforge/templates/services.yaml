@@ -70,7 +70,8 @@ spec:
             - { name: ACCOUNTS_URL, value: "http://{{ $.Release.Name }}-accounts:3001" }
             {{- end }}
           readinessProbe: { httpGet: { path: /readyz, port: http }, periodSeconds: 5, failureThreshold: 6 }
-          livenessProbe: { httpGet: { path: /healthz, port: http }, initialDelaySeconds: 10, periodSeconds: 10 }
+          startupProbe: { httpGet: { path: /healthz, port: http }, periodSeconds: 3, failureThreshold: 40, timeoutSeconds: 5 }
+          livenessProbe: { httpGet: { path: /healthz, port: http }, periodSeconds: 10, timeoutSeconds: 5, failureThreshold: 6 }
           resources: {{- toYaml $v.resources | nindent 12 }}
 ---
 apiVersion: v1
