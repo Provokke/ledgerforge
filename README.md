@@ -124,6 +124,8 @@ kubectl apply -f deploy/k8s/dev-infra.yaml
 helm install lf deploy/helm/ledgerforge -f deploy/k8s/values-dev.yaml
 ```
 
+This has been run on a kind cluster, and `npm run e2e` passes against it through a port-forward. The Terraform module has not been applied to a live cluster, only checked with `terraform init`.
+
 The chart runs matching as a single pod with a `Recreate` strategy on purpose. See the limits below.
 
 ## 🗂️ Layout
