@@ -26,8 +26,8 @@ export function holdFor(m: OrderMsg): { currency: string; amount: bigint } {
  *  - accounts.orders: reserve funds, then hand the order to matching. Prefetch
  *    1 keeps one account's orders in the order they arrived.
  *  - accounts.fills: trades and final order updates share ONE queue with
- *    prefetch 1, so a trade is always settled before the hold it draws on is
- *    released.
+ *    prefetch 1 and a single active consumer, so a trade is always settled
+ *    before the hold it draws on is released, even with several replicas.
  *  - accounts.deposits: credit the balance.
  */
 export async function startConsumers(bus: Bus, repo: AccountsRepo, log: Logger): Promise<void> {
@@ -91,7 +91,7 @@ export async function startConsumers(bus: Bus, repo: AccountsRepo, log: Logger):
         throw err;
       }
     },
-    { prefetch: 1 },
+    { prefetch: 1, singleActiveConsumer: true },
   );
 
   await bus.subscribe<DepositMade>(

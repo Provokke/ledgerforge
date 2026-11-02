@@ -18,6 +18,8 @@ export interface SubscribeOptions {
   maxRetries?: number;
   retryDelayMs?: number;
   prefetch?: number;
+  /** only one consumer reads at a time, so replicas can't process messages out of order */
+  singleActiveConsumer?: boolean;
 }
 
 /**
@@ -88,7 +90,14 @@ export class Bus {
       durable: true,
       arguments: { "x-message-ttl": retryDelayMs, "x-dead-letter-exchange": "", "x-dead-letter-routing-key": queue },
     });
-    await ch.assertQueue(queue, { durable: true, arguments: { "x-dead-letter-exchange": DLX, "x-dead-letter-routing-key": queue } });
+    await ch.assertQueue(queue, {
+      durable: true,
+      arguments: {
+        "x-dead-letter-exchange": DLX,
+        "x-dead-letter-routing-key": queue,
+        ...(opts.singleActiveConsumer ? { "x-single-active-consumer": true } : {}),
+      },
+    });
     for (const k of keys) await ch.bindQueue(queue, EXCHANGE, k);
 
     await ch.consume(queue, (raw) => {

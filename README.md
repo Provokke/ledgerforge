@@ -7,7 +7,7 @@ An order-matching engine with a double-entry ledger, built as four small service
 ![License](https://img.shields.io/badge/LICENSE-MIT-blue?style=for-the-badge)
 ![Node](https://img.shields.io/badge/NODE-%E2%89%A5%2022.18-5fa04e?style=for-the-badge&logo=node.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TYPESCRIPT-STRICT-3178c6?style=for-the-badge&logo=typescript&logoColor=white)
-![Tests](https://img.shields.io/badge/TESTS-50%20UNIT%20%2B%2025%20INTEGRATION-brightgreen?style=for-the-badge)
+![Tests](https://img.shields.io/badge/TESTS-50%20UNIT%20%2B%2026%20INTEGRATION-brightgreen?style=for-the-badge)
 ![Money](https://img.shields.io/badge/MONEY-INTEGERS%20ONLY-orange?style=for-the-badge)
 
 Refer to [CONTRIBUTING.md](CONTRIBUTING.md) for how to pitch in.
@@ -124,7 +124,7 @@ kubectl apply -f deploy/k8s/dev-infra.yaml
 helm install lf deploy/helm/ledgerforge -f deploy/k8s/values-dev.yaml
 ```
 
-This has been run on a kind cluster, and `npm run e2e` passes against it through a port-forward. The Terraform module has not been applied to a live cluster, only checked with `terraform init`.
+This has been run on a kind cluster, and `npm run e2e` passes against it through a port-forward. The Terraform module has also been applied to a kind cluster, and the e2e passes against that release with two accounts replicas.
 
 The chart runs matching as a single pod with a `Recreate` strategy on purpose. See the limits below.
 
@@ -146,7 +146,7 @@ deploy/              helm, k8s, terraform, observability, postgres init
 ```sh
 npm run typecheck
 npm test                  # 50 unit tests, no Docker needed
-npm run test:integration  # 25 tests against real Postgres, RabbitMQ and Redis in containers
+npm run test:integration  # 26 tests against real Postgres, RabbitMQ and Redis in containers
 npm run e2e               # against a running compose stack
 npm run bench             # order book micro-benchmark, no Docker
 ```
@@ -186,5 +186,6 @@ This is a portfolio project, not an exchange. Things it does not do:
 - **A cancel can beat its own hold.** The cancel goes straight to matching. If it arrives before the order has been held and forwarded, it does nothing and the order goes on to rest, so the caller has to retry the cancel.
 - **Limit orders only**, and the list of symbols is fixed at start-up.
 - **Static API keys.** There are no users, sessions or key rotation.
+- **Changing a queue's arguments needs the queue deleted first.** `accounts.fills` is a single-active-consumer queue so that replicas can't settle a trade after its hold has been released. RabbitMQ won't redeclare an existing queue with different arguments, so an older deployment has to drain and delete that queue once before upgrading.
 - **Settlement is slow next to matching.** About 190 orders/s end to end on one host, held back by prefetch 1 on the fills queue. Batching would help but needs care to keep the ordering rules.
 - **The ledger audit isn't exported as a metric.** It is an admin endpoint, and the alert rules watch dead-lettered messages instead.
